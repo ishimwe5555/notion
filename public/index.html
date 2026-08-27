@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyrics Search</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #6b6b6b;
+    --border: #e2e2e2;
+    --highlight: #fff1a8;
+    --highlight-fg: #1a1a1a;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14151a;
+      --fg: #eaeaea;
+      --muted: #9a9a9a;
+      --border: #2a2b31;
+      --highlight: #5a4a00;
+      --highlight-fg: #ffe27a;
+      --accent: #6ea8fe;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1.25rem 4rem;
+  }
+  h1 {
+    font-size: 1.25rem;
+    margin: 0 0 1rem;
+  }
+  #q {
+    width: 100%;
+    font-size: 1.1rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--fg);
+  }
+  #q:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  #status {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0.5rem 0 1.5rem;
+  }
+  .result {
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .result a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .result a:hover { text-decoration: underline; }
+  .snippet {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .snippet mark {
+    background: var(--highlight);
+    color: var(--highlight-fg);
+    border-radius: 3px;
+    padding: 0 0.1em;
+  }
+  .empty {
+    color: var(--muted);
+    padding: 2rem 0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lyrics Search</h1>
+  <input id="q" type="search" placeholder="Search for any substring…" autofocus autocomplete="off" />
+  <p id="status">Loading index…</p>
+  <div id="results"></div>
+</main>
+
+<script>
+(function () {
+  const qInput = document.getElementById("q");
+  const statusEl = document.getElementById("status");
+  const resultsEl = document.getElementById("results");
+
+  let pages = [];
+  let generatedAt = null;
+
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  // Finds all non-overlapping matches of `query` in `text` (case-insensitive
+  // substring, not tokenized) and returns a snippet around the first match
+  // plus the total match count.
+  function findSnippet(text, query) {
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let count = 0;
+    let firstIndex = -1;
+    let idx = lowerText.indexOf(lowerQuery);
+    while (idx !== -1) {
+      if (firstIndex === -1) firstIndex = idx;
+      count++;
+      idx = lowerText.indexOf(lowerQuery, idx + lowerQuery.length);
+    }
+    if (firstIndex === -1) return null;
+
+    const radius = 60;
+    const start = Math.max(0, firstIndex - radius);
+    const end = Math.min(text.length, firstIndex + query.length + radius);
+    const prefix = start > 0 ? "…" : "";
+    const suffix = end < text.length ? "…" : "";
+
+    const before = escapeHtml(text.slice(start, firstIndex));
+    const match = escapeHtml(text.slice(firstIndex, firstIndex + query.length));
+    const after = escapeHtml(text.slice(firstIndex + query.length, end));
+
+    return {
+      html: `${prefix}${before}<mark>${match}</mark>${after}${suffix}`,
+      count,
+    };
+  }
+
+  function render(query) {
+    resultsEl.innerHTML = "";
+    if (!query) {
+      statusEl.textContent = generatedAt
+        ? `${pages.length} page(s) indexed · last synced ${new Date(generatedAt).toLocaleString()}`
+        : "";
+      return;
+    }
+
+    const matches = [];
+    for (const page of pages) {
+      const inTitle = page.title.toLowerCase().includes(query.toLowerCase());
+      const snippet = findSnippet(page.text, query);
+      if (snippet || inTitle) {
+        matches.push({ page, snippet, inTitle });
+      }
+    }
+
+    statusEl.textContent = `${matches.length} page(s) match`;
+
+    if (matches.length === 0) {
+      resultsEl.innerHTML = '<p class="empty">No matches.</p>';
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const { page, snippet } of matches) {
+      const div = document.createElement("div");
+      div.className = "result";
+      const snippetHtml = snippet
+        ? `<p class="snippet">${snippet.html}${snippet.count > 1 ? ` <em>(${snippet.count} matches)</em>` : ""}</p>`
+        : "";
+      div.innerHTML = `<a href="${page.url}" target="_blank" rel="noopener">${escapeHtml(page.title)}</a>${snippetHtml}`;
+      frag.appendChild(div);
+    }
+    resultsEl.appendChild(frag);
+  }
+
+  fetch("search-index.json", { cache: "no-store" })
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      pages = data.pages || [];
+      generatedAt = data.generatedAt;
+      statusEl.textContent = `${pages.length} page(s) indexed · last synced ${new Date(generatedAt).toLocaleString()}`;
+    })
+    .catch((err) => {
+      statusEl.textContent = "Failed to load search index: " + err.message;
+    });
+
+  qInput.addEventListener("input", () => render(qInput.value.trim()));
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "notion-lyrics-search",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Substring search over lyrics scattered across Notion, synced automatically.",
+  "scripts": {
+    "sync": "node sync.js",
+    "list-shared": "node list-shared.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15"
+  }
+}
