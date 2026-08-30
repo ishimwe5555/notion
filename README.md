@@ -78,11 +78,18 @@ server, since some browsers block `fetch()` on `file://` URLs).
 
 ### 5. Push to GitHub and enable Pages
 
+Create a new **private** repo on GitHub (github.com → New repository), then:
+
 ```bash
 git add -A
 git commit -m "Set up Notion lyrics search"
-gh repo create notion-lyrics-search --private --source=. --push
+git remote add origin https://github.com/<you>/<repo>.git
+git push -u origin master
 ```
+
+(If you have the [GitHub CLI](https://cli.github.com/) installed —
+`brew install gh` on Mac — you can skip creating the repo manually and just
+run `gh repo create <repo> --private --source=. --push` instead.)
 
 Then in the repo on GitHub:
 
@@ -90,8 +97,8 @@ Then in the repo on GitHub:
    `NOTION_TOKEN` = your integration token.
 2. **Settings → Pages** → Source: **GitHub Actions**.
 3. **Actions** tab → run the "Sync Notion lyrics index" workflow once
-   manually to confirm it works, then it'll run automatically every 30
-   minutes from then on.
+   manually to confirm it works, then it'll run automatically every 12
+   hours from then on.
 
 Your search page will be live at the URL GitHub Pages shows you
 (`https://<you>.github.io/notion-lyrics-search/`).
